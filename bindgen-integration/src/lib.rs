@@ -261,6 +261,19 @@ fn test_macro_customintkind_path() {
 }
 
 #[test]
+fn test_operator_overloading() {
+    let mut a = bindings::OverloadedOperator{val: 27, other:0};
+	let b = bindings::OverloadedOperator{val: 13, other:0};
+	a += &b; // should call the overloaded C++ operator+=
+	let a = &a + &b; // should call the overloaded C++ operator+
+	let a = -&a; // should call the overloaded C++ operator- (unary)
+	let a = &a - &b; // should call the overloaded C++ operator- (binary)
+	assert!(a == bindings::OverloadedOperator{val: -66, other:0}); // should call the overloaded C++ operator=
+}
+
+// https://github.com/rust-lang/rust-bindgen/issues/1973
+#[cfg_attr(target_arch = "aarch64", should_panic)] // This line should be removed after the bug linked above is fixed
+#[test]
 fn test_homogeneous_aggregate_float_union() {
     unsafe {
         let coord = &bindings::coord(1., 2., 3., 4.);

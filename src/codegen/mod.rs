@@ -2060,6 +2060,12 @@ impl CodeGenerator for CompInfo {
             );
         }
 
+        // NB: We can't use to_rust_ty here since for opaque types this tries to
+        // use the specialization knowledge to generate a blob field.
+        let ty_for_impl = quote! {
+            #canonical_ident #generics
+        };
+
         if all_template_params.is_empty() {
             if !is_opaque {
                 for var in self.inner_vars() {
@@ -2158,6 +2164,7 @@ impl CodeGenerator for CompInfo {
             if ctx.options().codegen_config.methods() {
                 for method in self.methods() {
                     assert!(method.kind() != MethodKind::Constructor);
+                    method.try_codegen_operator(ctx, &ty_for_impl, result);
                     method.codegen_method(
                         ctx,
                         &mut methods,
@@ -2199,12 +2206,6 @@ impl CodeGenerator for CompInfo {
                 }
             }
         }
-
-        // NB: We can't use to_rust_ty here since for opaque types this tries to
-        // use the specialization knowledge to generate a blob field.
-        let ty_for_impl = quote! {
-            #canonical_ident #generics
-        };
 
         if needs_clone_impl {
             result.push(quote! {
@@ -2294,6 +2295,168 @@ impl CodeGenerator for CompInfo {
                     #( #methods )*
                 }
             });
+        }
+    }
+}
+
+impl Method {
+    /// If self is an overloaded operator that this function recognizes, this
+    /// function will put the correct wrapper into result and return true. Note
+    /// that this function does not need to recognize all overloaded operators
+    /// for Bindgen to work correctly, because this function "only" adds some
+    /// syntactic sugar to make the Rust code that calls the C++ code using
+    /// Bindgen look a bit nicer. A non-exhaustive list of ignored operators:
+    /// * `operator[]` - We could translate this C++ operator to Index or
+    ///   IndexMut, but in Rust usually the [] operator does the bounds
+    ///   checking, but in C++ usually the caller does the bounds checking. This
+    ///   might lead to bugs if the Rust caller thinks that the C++ operator
+    ///   will do bounds checking.
+    /// * `operator<, operator>, operator<=, operator>=` Rust does have the
+    ///   "Ord" and "PartialOrd" Traits that are similar to those operators, but
+    ///   those operators would require more coding work from the bindgen
+    ///   Authors than other operators and I'm lazy.
+    /// * `operator!=` In C++ you could (but you probably should not) define a
+    ///   != Operator and a == Operator, so that a != b is not !(a == b). You
+    ///   cannot do that in Rust, because Rustc translates a != b to !(a == b).
+    ///   We ignore the != Operator that the C++ code defined and just use the
+    ///   == Operator that the C++ code defined.
+    fn try_codegen_operator(
+        &self,
+        ctx: &BindgenContext,
+        ty_for_impl: &proc_macro2::TokenStream,
+        result: &mut CodegenResult,
+    ) {
+        // We start by getting the name of the function.
+        let function_item = ctx.resolve_item(self.signature());
+        let function = function_item.expect_function();
+        let name = function.name().to_owned();
+        if !name.starts_with("operator") {
+            return;
+        }
+
+        // We then get the type of the return value (ret_type) and the type of
+        // the second argument (second_arg_type) (if a second argument exists).
+        let function_name = ctx.rust_ident(function_item.canonical_name(ctx));
+        let signature_item = ctx.resolve_item(function.signature());
+        let signature = match *signature_item.expect_type().kind() {
+            TypeKind::Function(ref sig) => sig,
+            _ => panic!("How in the world?"),
+        };
+        let return_item = ctx.resolve_item(signature.return_type());
+        let ret_type = return_item.to_rust_ty_or_opaque(ctx, &());
+        let args = signature.argument_types();
+        let second_arg_type = if args.len() < 2 {
+            None
+        } else {
+            Some(utils::argument_type_id_to_rust_type(
+                ctx,
+                signature.argument_types()[1].1,
+                /* pointer_to_ref = */ true,
+            ))
+        };
+
+        // We then check if the function name is in one of the following three
+        // arrays or "operator==". If yes, we generate the correct wrapper and
+        // add it to result.
+        let assignment_operators = [
+            ("operator+=", "AddAssign", "add_assign"),
+            ("operator&=", "BitAndAssign", "bitand_assign"),
+            ("operator|=", "BitOrAssign", "bitor_assign"),
+            ("operator^=", "BitXorAssign", "bitxor_assign"),
+            ("operator/=", "DivAssign", "div_assign"),
+            ("operator%=", "RemAssign", "rem_assign"),
+            ("operator<<=", "ShlAssign", "shl_assign"),
+            ("operator>>=", "ShrAssign", "shr_assign"),
+            ("operator-=", "SubAssign", "sub_assign"),
+        ];
+        let binary_operators = [
+            ("operator+", "Add", "add"),
+            ("operator&", "BitAnd", "bitand"),
+            ("operator|", "BitOr", "bitor"),
+            ("operator^", "BitXor", "bitxor"),
+            ("operator/", "Div", "div"),
+            ("operator%", "Rem", "rem"),
+            ("operator<<", "Shl", "shl"),
+            ("operator>>", "Shr", "shr"),
+            ("operator-", "Sub", "sub"),
+        ];
+        let unary_operators =
+            [("operator-", "Neg", "neg"), ("operator!", "Not", "not")];
+        if name == "operator==" {
+            result.push(quote!(
+                impl PartialEq for #ty_for_impl {
+                    fn eq(&self, rhs: &Self) -> bool {
+                        unsafe {
+                            #function_name(self, rhs)
+                        }
+                    }
+                }
+            ));
+            return;
+        }
+        let prefix = ctx.trait_prefix();
+        for el in assignment_operators.iter() {
+            // The args.len() == 2 check shouldn't be neccessary but we still have it.
+            if args.len() == 2 && name == el.0 {
+                let rhs_type = second_arg_type.unwrap();
+                let trait_name =
+                    proc_macro2::TokenStream::from_str(el.1).unwrap();
+                let func_name =
+                    proc_macro2::TokenStream::from_str(el.2).unwrap();
+                result.push(quote!(
+                    impl ::#prefix::ops::#trait_name<#rhs_type> for #ty_for_impl {
+                        fn #func_name(&mut self, rhs: #rhs_type) {
+                            unsafe {
+                                #function_name(self, rhs);
+                            }
+                        }
+                    }
+                ));
+                return;
+            }
+        }
+        for el in binary_operators.iter() {
+            // The args.len() == 2 check is needed, because "operator-" is both
+            // the name of the binary minus and the unary minus operator (a.k.a
+            // the negation operator).
+            if args.len() == 2 && name == el.0 {
+                let rhs_type = second_arg_type.unwrap();
+                let trait_name =
+                    proc_macro2::TokenStream::from_str(el.1).unwrap();
+                let func_name =
+                    proc_macro2::TokenStream::from_str(el.2).unwrap();
+                result.push(quote!(
+                    impl ::#prefix::ops::#trait_name<#rhs_type> for &#ty_for_impl {
+                        type Output = #ret_type;
+                        fn #func_name(self, rhs: #rhs_type) -> #ret_type {
+                            unsafe {
+                                #function_name(self, rhs)
+                            }
+                        }
+                    }
+                ));
+                return;
+            }
+        }
+        for el in unary_operators.iter() {
+            // The args.len() == 1 check shouldn't be neccessary but we still have it.
+            if args.len() == 1 && name == el.0 {
+                let trait_name =
+                    proc_macro2::TokenStream::from_str(el.1).unwrap();
+                let func_name =
+                    proc_macro2::TokenStream::from_str(el.2).unwrap();
+                result.push(quote!(
+                    impl ::#prefix::ops::#trait_name for &#ty_for_impl {
+                        type Output = #ret_type;
+                        fn #func_name(self) -> #ret_type {
+                            unsafe {
+                                #function_name(self)
+                            }
+                        }
+                    }
+                ));
+                return;
+            }
         }
     }
 }
@@ -4609,55 +4772,66 @@ pub mod utils {
         }
     }
 
+    pub fn argument_type_id_to_rust_type(
+        ctx: &BindgenContext,
+        ty: crate::ir::context::TypeId,
+        pointer_to_ref: bool,
+    ) -> proc_macro2::TokenStream {
+        use super::ToPtr;
+
+        let arg_item = ctx.resolve_item(ty);
+        let arg_ty = arg_item.kind().expect_type();
+
+        // From the C90 standard[1]:
+        //
+        //     A declaration of a parameter as "array of type" shall be
+        //     adjusted to "qualified pointer to type", where the type
+        //     qualifiers (if any) are those specified within the [ and ] of
+        //     the array type derivation.
+        //
+        // [1]: http://c0x.coding-guidelines.com/6.7.5.3.html
+        match *arg_ty.canonical_type(ctx).kind() {
+            TypeKind::Array(t, _) => {
+                let stream = if ctx.options().array_pointers_in_arguments {
+                    arg_ty.to_rust_ty_or_opaque(ctx, &arg_item)
+                } else {
+                    t.to_rust_ty_or_opaque(ctx, &())
+                };
+                stream.to_ptr(ctx.resolve_type(t).is_const())
+            }
+            TypeKind::Pointer(inner) => {
+                if pointer_to_ref {
+                    let inner = inner.to_rust_ty_or_opaque(ctx, &());
+                    return quote! { &#inner };
+                }
+
+                let inner = ctx.resolve_item(inner);
+                let inner_ty = inner.expect_type();
+                if let TypeKind::ObjCInterface(ref interface) =
+                    *inner_ty.canonical_type(ctx).kind()
+                {
+                    let name = ctx.rust_ident(interface.name());
+                    quote! {
+                        #name
+                    }
+                } else {
+                    arg_item.to_rust_ty_or_opaque(ctx, &())
+                }
+            }
+            _ => arg_item.to_rust_ty_or_opaque(ctx, &()),
+        }
+    }
+
+    /// Returns a Vec of the Rust arguments of the function sig
     pub fn fnsig_arguments(
         ctx: &BindgenContext,
         sig: &FunctionSig,
     ) -> Vec<proc_macro2::TokenStream> {
-        use super::ToPtr;
-
         let mut unnamed_arguments = 0;
         let mut args = sig
             .argument_types()
             .iter()
             .map(|&(ref name, ty)| {
-                let arg_item = ctx.resolve_item(ty);
-                let arg_ty = arg_item.kind().expect_type();
-
-                // From the C90 standard[1]:
-                //
-                //     A declaration of a parameter as "array of type" shall be
-                //     adjusted to "qualified pointer to type", where the type
-                //     qualifiers (if any) are those specified within the [ and ] of
-                //     the array type derivation.
-                //
-                // [1]: http://c0x.coding-guidelines.com/6.7.5.3.html
-                let arg_ty = match *arg_ty.canonical_type(ctx).kind() {
-                    TypeKind::Array(t, _) => {
-                        let stream =
-                            if ctx.options().array_pointers_in_arguments {
-                                arg_ty.to_rust_ty_or_opaque(ctx, &arg_item)
-                            } else {
-                                t.to_rust_ty_or_opaque(ctx, &())
-                            };
-                        stream.to_ptr(ctx.resolve_type(t).is_const())
-                    }
-                    TypeKind::Pointer(inner) => {
-                        let inner = ctx.resolve_item(inner);
-                        let inner_ty = inner.expect_type();
-                        if let TypeKind::ObjCInterface(ref interface) =
-                            *inner_ty.canonical_type(ctx).kind()
-                        {
-                            let name = ctx.rust_ident(interface.name());
-                            quote! {
-                                #name
-                            }
-                        } else {
-                            arg_item.to_rust_ty_or_opaque(ctx, &())
-                        }
-                    }
-                    _ => arg_item.to_rust_ty_or_opaque(ctx, &()),
-                };
-
                 let arg_name = match *name {
                     Some(ref name) => ctx.rust_mangle(name).into_owned(),
                     None => {
@@ -4668,6 +4842,10 @@ pub mod utils {
 
                 assert!(!arg_name.is_empty());
                 let arg_name = ctx.rust_ident(arg_name);
+
+                let arg_ty = argument_type_id_to_rust_type(
+                    ctx, ty, /* pointer_to_ref = */ false,
+                );
 
                 quote! {
                     #arg_name : #arg_ty
