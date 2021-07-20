@@ -226,6 +226,7 @@ struct CodegenResult<'a> {
     /// Being these two different declarations.
     functions_seen: HashSet<String>,
     vars_seen: HashSet<String>,
+    structs_seen: HashSet<String>,
 
     /// Used for making bindings to overloaded functions. Maps from a canonical
     /// function name to the number of overloads we have already codegen'd for
@@ -246,6 +247,7 @@ impl<'a> CodegenResult<'a> {
             codegen_id,
             items_seen: Default::default(),
             functions_seen: Default::default(),
+            structs_seen: Default::default(),
             vars_seen: Default::default(),
             overload_counters: Default::default(),
         }
@@ -289,6 +291,14 @@ impl<'a> CodegenResult<'a> {
 
     fn saw_function(&mut self, name: &str) {
         self.functions_seen.insert(name.into());
+    }
+
+    fn seen_struct(&self, name: &str) -> bool {
+        self.structs_seen.contains(name)
+    }
+
+    fn saw_struct(&mut self, name: &str) {
+        self.structs_seen.insert(name.into());
     }
 
     /// Get the overload number for the given function name. Increments the
@@ -1722,6 +1732,10 @@ impl CodeGenerator for CompInfo {
 
         let canonical_name = item.canonical_name(ctx);
         let canonical_ident = ctx.rust_ident(&canonical_name);
+        
+        if result.seen_struct(canonical_name.as_str()) {
+            return;
+        }
 
         // Generate the vtable from the method list if appropriate.
         //
@@ -2294,6 +2308,10 @@ impl CodeGenerator for CompInfo {
                     #( #methods )*
                 }
             });
+        }
+
+        if !fields.is_empty() {
+            result.saw_struct(canonical_name.as_str());
         }
     }
 }
