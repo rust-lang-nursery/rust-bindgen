@@ -26,9 +26,15 @@ fn bindgen_test_layout_cmdline_token_hdr() {
         concat!("Alignment of ", stringify!(cmdline_token_hdr))
     );
     assert_eq!(
-        unsafe {
-            &(*(::std::ptr::null::<cmdline_token_hdr>())).ops as *const _
-                as usize
+        {
+            let struct_instance =
+                unsafe { std::mem::zeroed::<cmdline_token_hdr>() };
+            let struct_ptr = &struct_instance as *const cmdline_token_hdr;
+            let field_ptr = std::ptr::addr_of!(struct_instance.ops);
+            let struct_address = struct_ptr as usize;
+            let field_address = field_ptr as usize;
+            std::mem::forget(struct_instance);
+            field_address.checked_sub(struct_address).unwrap()
         },
         0usize,
         concat!(
@@ -39,9 +45,15 @@ fn bindgen_test_layout_cmdline_token_hdr() {
         )
     );
     assert_eq!(
-        unsafe {
-            &(*(::std::ptr::null::<cmdline_token_hdr>())).offset as *const _
-                as usize
+        {
+            let struct_instance =
+                unsafe { std::mem::zeroed::<cmdline_token_hdr>() };
+            let struct_ptr = &struct_instance as *const cmdline_token_hdr;
+            let field_ptr = std::ptr::addr_of!(struct_instance.offset);
+            let struct_address = struct_ptr as usize;
+            let field_address = field_ptr as usize;
+            std::mem::forget(struct_instance);
+            field_address.checked_sub(struct_address).unwrap()
         },
         8usize,
         concat!(
@@ -128,9 +140,15 @@ fn bindgen_test_layout_cmdline_token_ops() {
         concat!("Alignment of ", stringify!(cmdline_token_ops))
     );
     assert_eq!(
-        unsafe {
-            &(*(::std::ptr::null::<cmdline_token_ops>())).parse as *const _
-                as usize
+        {
+            let struct_instance =
+                unsafe { std::mem::zeroed::<cmdline_token_ops>() };
+            let struct_ptr = &struct_instance as *const cmdline_token_ops;
+            let field_ptr = std::ptr::addr_of!(struct_instance.parse);
+            let struct_address = struct_ptr as usize;
+            let field_address = field_ptr as usize;
+            std::mem::forget(struct_instance);
+            field_address.checked_sub(struct_address).unwrap()
         },
         0usize,
         concat!(
@@ -141,9 +159,15 @@ fn bindgen_test_layout_cmdline_token_ops() {
         )
     );
     assert_eq!(
-        unsafe {
-            &(*(::std::ptr::null::<cmdline_token_ops>())).complete_get_nb
-                as *const _ as usize
+        {
+            let struct_instance =
+                unsafe { std::mem::zeroed::<cmdline_token_ops>() };
+            let struct_ptr = &struct_instance as *const cmdline_token_ops;
+            let field_ptr = std::ptr::addr_of!(struct_instance.complete_get_nb);
+            let struct_address = struct_ptr as usize;
+            let field_address = field_ptr as usize;
+            std::mem::forget(struct_instance);
+            field_address.checked_sub(struct_address).unwrap()
         },
         8usize,
         concat!(
@@ -154,9 +178,16 @@ fn bindgen_test_layout_cmdline_token_ops() {
         )
     );
     assert_eq!(
-        unsafe {
-            &(*(::std::ptr::null::<cmdline_token_ops>())).complete_get_elt
-                as *const _ as usize
+        {
+            let struct_instance =
+                unsafe { std::mem::zeroed::<cmdline_token_ops>() };
+            let struct_ptr = &struct_instance as *const cmdline_token_ops;
+            let field_ptr =
+                std::ptr::addr_of!(struct_instance.complete_get_elt);
+            let struct_address = struct_ptr as usize;
+            let field_address = field_ptr as usize;
+            std::mem::forget(struct_instance);
+            field_address.checked_sub(struct_address).unwrap()
         },
         16usize,
         concat!(
@@ -167,9 +198,15 @@ fn bindgen_test_layout_cmdline_token_ops() {
         )
     );
     assert_eq!(
-        unsafe {
-            &(*(::std::ptr::null::<cmdline_token_ops>())).get_help as *const _
-                as usize
+        {
+            let struct_instance =
+                unsafe { std::mem::zeroed::<cmdline_token_ops>() };
+            let struct_ptr = &struct_instance as *const cmdline_token_ops;
+            let field_ptr = std::ptr::addr_of!(struct_instance.get_help);
+            let struct_address = struct_ptr as usize;
+            let field_address = field_ptr as usize;
+            std::mem::forget(struct_instance);
+            field_address.checked_sub(struct_address).unwrap()
         },
         24usize,
         concat!(
@@ -210,9 +247,15 @@ fn bindgen_test_layout_cmdline_token_num_data() {
         concat!("Alignment of ", stringify!(cmdline_token_num_data))
     );
     assert_eq!(
-        unsafe {
-            &(*(::std::ptr::null::<cmdline_token_num_data>())).type_ as *const _
-                as usize
+        {
+            let struct_instance =
+                unsafe { std::mem::zeroed::<cmdline_token_num_data>() };
+            let struct_ptr = &struct_instance as *const cmdline_token_num_data;
+            let field_ptr = std::ptr::addr_of!(struct_instance.type_);
+            let struct_address = struct_ptr as usize;
+            let field_address = field_ptr as usize;
+            std::mem::forget(struct_instance);
+            field_address.checked_sub(struct_address).unwrap()
         },
         0usize,
         concat!(
@@ -251,9 +294,15 @@ fn bindgen_test_layout_cmdline_token_num() {
         concat!("Alignment of ", stringify!(cmdline_token_num))
     );
     assert_eq!(
-        unsafe {
-            &(*(::std::ptr::null::<cmdline_token_num>())).hdr as *const _
-                as usize
+        {
+            let struct_instance =
+                unsafe { std::mem::zeroed::<cmdline_token_num>() };
+            let struct_ptr = &struct_instance as *const cmdline_token_num;
+            let field_ptr = std::ptr::addr_of!(struct_instance.hdr);
+            let struct_address = struct_ptr as usize;
+            let field_address = field_ptr as usize;
+            std::mem::forget(struct_instance);
+            field_address.checked_sub(struct_address).unwrap()
         },
         0usize,
         concat!(
@@ -264,9 +313,15 @@ fn bindgen_test_layout_cmdline_token_num() {
         )
     );
     assert_eq!(
-        unsafe {
-            &(*(::std::ptr::null::<cmdline_token_num>())).num_data as *const _
-                as usize
+        {
+            let struct_instance =
+                unsafe { std::mem::zeroed::<cmdline_token_num>() };
+            let struct_ptr = &struct_instance as *const cmdline_token_num;
+            let field_ptr = std::ptr::addr_of!(struct_instance.num_data);
+            let struct_address = struct_ptr as usize;
+            let field_address = field_ptr as usize;
+            std::mem::forget(struct_instance);
+            field_address.checked_sub(struct_address).unwrap()
         },
         16usize,
         concat!(
